@@ -72,6 +72,10 @@ Client to server: `conversation:join`, `conversation:leave`, `message:send`, `me
 
 Server to client: `message:new`, `message:delivered`, `message:read`, `presence`, `typing`, `error`.
 
+## Testers
+
+A plain-language handout for anyone trying the app is in [TESTERS.md](TESTERS.md). The live endpoints are documented in [DEPLOY.md](DEPLOY.md).
+
 ## Deploying
 
 See [DEPLOY.md](DEPLOY.md) for the Render (backend, Frankfurt), Vercel (web client for testers), and EAS (Android APK) steps.

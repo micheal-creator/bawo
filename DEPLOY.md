@@ -6,7 +6,7 @@ Three things get deployed:
 | --- | --- | --- |
 | API + Socket.IO server + Postgres | Render (Frankfurt) | `https://bawo-api.onrender.com` |
 | Client for testers (web, no install) | Vercel | `https://bawo-ivory.vercel.app` |
-| Android app for testers (APK) | EAS Build | install link from the EAS dashboard |
+| Android app for testers (APK) | EAS Build | https://expo.dev/artifacts/eas/cZDXJ6P9ei5ULqU48zxIHFGz53jOD4a4N49D0OorY3c.apk |
 
 `OTP_MODE=dev` is on, so testers sign in with any phone number and code `123456`.
 
@@ -29,6 +29,7 @@ Both open a browser. The Render step below is dashboard-only.
 4. When it asks for the two `sync: false` values, leave them blank for now:
    - `CLIENT_ORIGIN` — set after step 3 to the Vercel URL
    - `PUBLIC_URL` — set after this step to `https://bawo-api.onrender.com`
+
 5. Wait for the first deploy, then confirm:
 
 ```bash

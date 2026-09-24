@@ -1,0 +1,23 @@
+{
+  "name": "bawo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "bawo - real-time messaging app (Node.js + TypeScript + Socket.io, PostgreSQL, Redis, Expo React Native)",
+  "workspaces": [
+    "server",
+    "mobile"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace server",
+    "dev:server": "npm run dev --workspace server",
+    "dev:mobile": "npm run start --workspace mobile",
+    "build": "npm run build --workspace server",
+    "start": "npm run start --workspace server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:up": "docker compose up -d postgres redis",
+    "db:down": "docker compose down"
+  }
+}

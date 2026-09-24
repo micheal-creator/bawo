@@ -2,6 +2,7 @@ import type { Server as HttpServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
 import { config } from './config.js';
 import { verifyToken } from './auth.js';
+import { corsOrigins, resolveCorsOrigin } from './config.js';
 import {
   isMember,
   insertMessage,
@@ -80,10 +81,12 @@ const conversationRoom = (conversationId: string) => `conversation:${conversatio
 const userRoom = (userId: string) => `user:${userId}`;
 
 export function createRealtimeServer(httpServer: HttpServer): Server {
+  const socketOrigins = corsOrigins().includes('*') ? true : corsOrigins();
+
   const io = new Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>(
     httpServer,
     {
-      cors: { origin: config.clientOrigin === '*' ? true : config.clientOrigin.split(','), credentials: true },
+      cors: { origin: socketOrigins, credentials: true },
       transports: ['polling', 'websocket'],
     },
   );

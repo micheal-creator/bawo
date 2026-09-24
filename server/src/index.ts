@@ -1,22 +1,30 @@
 import { createServer } from 'node:http';
-import cors from 'cors';
 import express from 'express';
 import { config } from './config.js';
 import { closePool, migrate } from './db.js';
 import { closeRedis } from './redis.js';
 import { createRealtimeServer } from './realtime.js';
 import { router } from './routes.js';
+import { resolveCorsOrigin } from './config.js';
 
 async function main(): Promise<void> {
   const app = express();
 
   app.disable('x-powered-by');
-  app.use(
-    cors({
-      origin: config.clientOrigin === '*' ? true : config.clientOrigin.split(','),
-      credentials: true,
-    }),
-  );
+  app.use((req, res, next) => {
+    const origin = resolveCorsOrigin(req.headers.origin);
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    }
+    if (req.method === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
   app.use(express.json({ limit: '1mb' }));
 
   app.use(router);

@@ -45,3 +45,19 @@ export const config = {
 } as const;
 
 export const isDevOtp = config.otp.mode === 'dev';
+
+export function corsOrigins(): string[] {
+  const raw = config.clientOrigin.trim();
+  if (raw === '*' || raw === '') return ['*'];
+  return raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+export function resolveCorsOrigin(requestOrigin: string | undefined): string | null {
+  const allowed = corsOrigins();
+  if (allowed.includes('*')) return requestOrigin ?? null;
+  if (requestOrigin && allowed.includes(requestOrigin)) return requestOrigin;
+  return null;
+}

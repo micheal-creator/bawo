@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { config, isDevOtp } from './config.js';
 import { authMiddleware, issueToken, normalizePhone, requestOtp, verifyOtp } from './auth.js';
-import { isOnline, lastSeen, onlineAmong, redis } from './redis.js';
+import { isOnline, kv, lastSeen, onlineAmong } from './redis.js';
 import { query } from './db.js';
 import {
   addContact,
@@ -46,8 +46,7 @@ router.get('/health', asyncHandler(async (_req, res) => {
   }
   let cache = 'down';
   try {
-    await redis.ping();
-    cache = 'redis';
+    cache = (await kv.ping()) ? kv.kind : 'down';
   } catch {
     cache = 'down';
   }

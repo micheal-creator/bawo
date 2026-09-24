@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: bawo-api
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    buildCommand: npm ci --include=dev && npm run build --workspace server
+    startCommand: npm run start --workspace server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: OTP_MODE
+        value: dev
+      - key: OTP_DEV_CODE
+        value: "123456"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bawo-db
+          property: connectionString
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: PUBLIC_URL
+        sync: false
+
+databases:
+  - name: bawo-db
+    plan: free
+    databaseName: bawo
+    user: bawo
+    region: oregon

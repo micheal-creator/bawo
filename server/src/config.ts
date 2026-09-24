@@ -32,7 +32,7 @@ export const config = {
   databaseUrl: required('DATABASE_URL', 'postgres://bawo:bawo@localhost:5432/bawo'),
   databaseSsl: bool('DATABASE_SSL', false),
 
-  redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
+  redisUrl: process.env.REDIS_URL?.trim() || null,
 
   jwtSecret: required('JWT_SECRET', 'change-me-in-production'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '30d',

@@ -2,7 +2,7 @@ import { randomInt, timingSafeEqual } from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { config, isDevOtp } from './config.js';
-import { redis } from './redis.js';
+import { kv } from './redis.js';
 
 export interface AuthPayload {
   sub: string;
@@ -50,16 +50,16 @@ function safeEqual(a: string, b: string): boolean {
 
 export async function requestOtp(phone: string): Promise<{ devCode?: string }> {
   const code = isDevOtp ? config.otp.devCode : String(randomInt(100000, 999999));
-  await redis.set(otpKey(phone), code, 'EX', config.otp.ttlSeconds);
+  await kv.set(otpKey(phone), code, config.otp.ttlSeconds);
   return isDevOtp ? { devCode: code } : {};
 }
 
 export async function verifyOtp(phone: string, code: unknown): Promise<boolean> {
   if (typeof code !== 'string' || code.length === 0) return false;
-  const stored = await redis.get(otpKey(phone));
+  const stored = await kv.get(otpKey(phone));
   if (stored === null) return false;
   const ok = safeEqual(stored, code);
-  if (ok) await redis.del(otpKey(phone));
+  if (ok) await kv.del(otpKey(phone));
   return ok;
 }
 

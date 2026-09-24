@@ -32,7 +32,12 @@
       "expo-secure-store"
     ],
     "extra": {
-      "apiUrl": "http://localhost:4000"
-    }
+      "apiUrl": "http://localhost:4000",
+      "router": {},
+      "eas": {
+        "projectId": "1c0199e4-14e7-4731-aa2a-4eb6ec00ae98"
+      }
+    },
+    "owner": "lewenge"
   }
 }

@@ -4,6 +4,7 @@ build/
 .expo/
 .expo-shared/
 web-build/
+.vercel/
 *.tsbuildinfo
 
 .env

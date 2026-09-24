@@ -5,7 +5,7 @@ Three things get deployed:
 | Piece | Host | URL |
 | --- | --- | --- |
 | API + Socket.IO server + Postgres | Render (Frankfurt) | `https://bawo-api.onrender.com` |
-| Client for testers (web, no install) | Vercel | `https://bawo.vercel.app` (or the deployed alias) |
+| Client for testers (web, no install) | Vercel | `https://bawo-ivory.vercel.app` |
 | Android app for testers (APK) | EAS Build | install link from the EAS dashboard |
 
 `OTP_MODE=dev` is on, so testers sign in with any phone number and code `123456`.

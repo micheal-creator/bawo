@@ -36,7 +36,7 @@ The server creates its tables on boot (`server/src/schema.ts`).
 | Variable | Where | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | server | Postgres connection string |
-| `REDIS_URL` | server | Redis connection string |
+| `REDIS_URL` | server | Optional; omit to use the in-memory presence/OTP store |
 | `JWT_SECRET` | server | Sign auth tokens |
 | `OTP_MODE` | server | `dev` or `sms` |
 | `CLIENT_ORIGIN` | server | Comma-separated allowlist, or `*` |
@@ -71,6 +71,10 @@ Socket.IO, authenticated with the JWT in the handshake (`auth.token`).
 Client to server: `conversation:join`, `conversation:leave`, `message:send`, `message:delivered`, `message:read`, `typing`, `device:register`.
 
 Server to client: `message:new`, `message:delivered`, `message:read`, `presence`, `typing`, `error`.
+
+## Deploying
+
+See [DEPLOY.md](DEPLOY.md) for the Render (backend, Frankfurt), Vercel (web client for testers), and EAS (Android APK) steps.
 
 ## Not built yet
 

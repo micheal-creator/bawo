@@ -36,16 +36,21 @@ export interface StatusViewer {
   viewedAt: string;
 }
 
-const AUDIENCE_SQL = `
-  SELECT $1::uuid AS user_id
-  UNION
-  SELECT c.contact_id FROM contacts c WHERE c.owner_id = $1::uuid
-  UNION
-  SELECT peer.user_id
-  FROM conversation_members mine
-  JOIN conversations conv ON conv.id = mine.conversation_id AND conv.kind = 'direct'
-  JOIN conversation_members peer ON peer.conversation_id = conv.id AND peer.user_id <> $1::uuid
-  WHERE mine.user_id = $1::uuid
+const VISIBILITY_SQL = `
+  (
+    s.user_id = $1::uuid
+    OR EXISTS (
+      SELECT 1 FROM contacts c
+      WHERE c.owner_id = s.user_id AND c.contact_id = $1::uuid
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM conversation_members mine
+      JOIN conversations conv ON conv.id = mine.conversation_id AND conv.kind = 'direct'
+      JOIN conversation_members peer ON peer.conversation_id = conv.id
+      WHERE mine.user_id = $1::uuid AND peer.user_id = s.user_id
+    )
+  )
 `;
 
 export async function createStatus(
@@ -124,7 +129,7 @@ export async function listStatusFeed(viewerId: string): Promise<StatusGroup[]> {
        FROM user_status s
        LEFT JOIN status_views v ON v.status_id = s.id AND v.viewer_id = $1::uuid
        WHERE s.expires_at > now()
-         AND s.user_id IN (${AUDIENCE_SQL})
+         AND ${VISIBILITY_SQL}
        GROUP BY s.user_id
      ) feed
      JOIN users u ON u.id = feed.user_id
@@ -162,7 +167,7 @@ export async function canViewStatus(viewerId: string, statusId: string): Promise
     `SELECT 1 FROM user_status s
      WHERE s.id = $2::uuid
        AND s.expires_at > now()
-       AND s.user_id IN (${AUDIENCE_SQL})`,
+       AND ${VISIBILITY_SQL}`,
     [viewerId, statusId],
   );
   return result.rowCount === 1;

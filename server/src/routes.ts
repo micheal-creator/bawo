@@ -104,7 +104,14 @@ router.get('/health', asyncHandler(async (_req, res) => {
   } catch {
     cache = 'down';
   }
-  res.json({ ok: db === 'postgres', db, cache, otp: config.otp.mode, env: config.env });
+  res.json({
+    ok: db === 'postgres',
+    db,
+    cache,
+    otp: config.otp.mode,
+    env: config.env,
+    rev: (process.env.RENDER_GIT_COMMIT ?? 'dev').slice(0, 7),
+  });
 }));
 
 router.post('/auth/request-otp', asyncHandler(async (req, res) => {

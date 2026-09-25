@@ -65,7 +65,7 @@ export async function storeMedia(dataUrl: unknown): Promise<StoredMedia> {
   const filename = `${randomUUID()}.${extension}`;
   await writeFile(path.join(uploadDir(), filename), parsed.buffer);
   return {
-    url: `${config.publicUrl.replace(/\/$/, '')}/media/${filename}`,
+    url: `/media/${filename}`,
     bytes: parsed.buffer.length,
     mime: parsed.mime,
   };

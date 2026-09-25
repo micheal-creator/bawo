@@ -28,12 +28,14 @@ function RootNavigator() {
   useEffect(() => {
     if (!socket) return;
 
-    const onIncoming = (payload: { call: { id: string; kind: CallKind }; peer: { id: string } }) => {
+    const onIncoming = (payload: { call: { id: string; kind: CallKind }; peer: { id: string; displayName: string; phone: string } }) => {
       const callId = payload.call.id;
       if (activeCallRef.current === callId) return;
       activeCallRef.current = callId;
       const kind = payload.call.kind === 'video' ? 'video' : 'audio';
-      router.push(`/call/${payload.peer.id}?kind=${kind}&incoming=${callId}`);
+      const name = encodeURIComponent(payload.peer.displayName ?? '');
+      const phone = encodeURIComponent(payload.peer.phone ?? '');
+      router.push(`/call/${payload.peer.id}?kind=${kind}&incoming=${callId}&name=${name}&phone=${phone}`);
     };
 
     const onCleared = () => {

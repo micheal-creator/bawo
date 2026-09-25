@@ -32,10 +32,19 @@ if (Platform.OS !== 'web') {
 type Phase = 'placing' | 'ringing' | 'connected' | 'ended' | 'failed';
 
 export default function CallScreen() {
-  const params = useLocalSearchParams<{ peerId?: string; kind?: string; incoming?: string; callId?: string }>();
+  const params = useLocalSearchParams<{
+    peerId?: string;
+    kind?: string;
+    incoming?: string;
+    callId?: string;
+    name?: string;
+    phone?: string;
+  }>();
   const peerId = typeof params.peerId === 'string' ? params.peerId : '';
   const incomingCallId = typeof params.incoming === 'string' ? params.incoming : null;
   const initialKind: CallKind = params.kind === 'video' ? 'video' : 'audio';
+  const initialName = typeof params.name === 'string' ? params.name : '';
+  const initialPhone = typeof params.phone === 'string' ? params.phone : '';
   const router = useRouter();
   const { token, socket } = useSession();
 
@@ -46,7 +55,18 @@ export default function CallScreen() {
   const pendingSignalsRef = useRef<unknown[]>([]);
 
   const [phase, setPhase] = useState<Phase>(incomingCallId ? 'ringing' : 'placing');
-  const [peer, setPeer] = useState<CallPeer | null>(null);
+  const [peer, setPeer] = useState<CallPeer | null>(
+    initialName.length > 0
+      ? {
+          id: peerId,
+          displayName: initialName,
+          phone: initialPhone,
+          nationalPhone: null,
+          countryCode: null,
+          avatarUrl: null,
+        }
+      : null,
+  );
   const [muted, setMuted] = useState(false);
   const [cameraOn, setCameraOn] = useState(initialKind === 'video');
   const [elapsed, setElapsed] = useState(0);

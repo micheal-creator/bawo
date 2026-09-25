@@ -198,13 +198,21 @@ export default function ChatScreen() {
           <View style={styles.callRow}>
             <Pressable
               style={styles.callButton}
-              onPress={() => router.push(`/call/${peer.id}?kind=audio`)}
+              onPress={() =>
+                router.push(
+                  `/call/${peer.id}?kind=audio&name=${encodeURIComponent(peer.displayName)}&phone=${encodeURIComponent(peer.phone)}`,
+                )
+              }
             >
               <Text style={styles.callButtonText}>Call</Text>
             </Pressable>
             <Pressable
               style={styles.callButton}
-              onPress={() => router.push(`/call/${peer.id}?kind=video`)}
+              onPress={() =>
+                router.push(
+                  `/call/${peer.id}?kind=video&name=${encodeURIComponent(peer.displayName)}&phone=${encodeURIComponent(peer.phone)}`,
+                )
+              }
             >
               <Text style={styles.callButtonText}>Video</Text>
             </Pressable>

@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,25 +12,16 @@ import {
   View,
 } from 'react-native';
 import { api, ApiError } from '../../lib/api';
+import { dayLabel, timeLabel } from '../../lib/format';
+import { formatWithDial } from '../../lib/phone';
 import { useSession } from '../../lib/session';
 import { colors, spacing } from '../../lib/theme';
 import type { Conversation, Message } from '../../lib/types';
 
-function timeLabel(iso: string): string {
-  const date = new Date(iso);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function dayLabel(iso: string): string {
-  const date = new Date(iso);
-  const today = new Date();
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  return date.toLocaleDateString();
-}
-
 export default function ChatScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const conversationId = typeof params.id === 'string' ? params.id : '';
+  const router = useRouter();
   const { token, user, socket } = useSession();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -195,7 +186,30 @@ export default function ChatScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <View style={styles.statusBar}>
-        <Text style={styles.statusText}>{headerStatus}</Text>
+        <View style={styles.statusLeft}>
+          <Text style={styles.statusText}>{headerStatus}</Text>
+          {peer ? (
+            <Text style={styles.statusNumber}>
+              {formatWithDial(peer.phone, peer.nationalPhone)}
+            </Text>
+          ) : null}
+        </View>
+        {peer ? (
+          <View style={styles.callRow}>
+            <Pressable
+              style={styles.callButton}
+              onPress={() => router.push(`/call/${peer.id}?kind=audio`)}
+            >
+              <Text style={styles.callButtonText}>Call</Text>
+            </Pressable>
+            <Pressable
+              style={styles.callButton}
+              onPress={() => router.push(`/call/${peer.id}?kind=video`)}
+            >
+              <Text style={styles.callButtonText}>Video</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
 
       <FlatList
@@ -251,8 +265,25 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  statusBar: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  statusBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    gap: spacing.md,
+  },
+  statusLeft: { flex: 1, gap: 2 },
   statusText: { color: colors.textMuted, fontSize: 12 },
+  statusNumber: { color: colors.primary, fontSize: 11 },
+  callRow: { flexDirection: 'row', gap: spacing.sm },
+  callButton: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceAlt,
+  },
+  callButtonText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   listContent: { padding: spacing.md, gap: 2 },
   dayLabel: {
     alignSelf: 'center',

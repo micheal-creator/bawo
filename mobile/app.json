@@ -2,7 +2,7 @@
   "expo": {
     "name": "bawo",
     "slug": "bawo",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "bawo",
@@ -10,10 +10,24 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ng.com.bawo.app"
+      "bundleIdentifier": "ng.com.bawo.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "bawo uses the camera for video calls and listing photos.",
+        "NSMicrophoneUsageDescription": "bawo uses the microphone for voice and video calls.",
+        "NSPhotoLibraryUsageDescription": "bawo needs access to your photos so you can add a status or listing photo.",
+        "NSLocationWhenInUseUsageDescription": "bawo uses your location once to set your default country dialling code."
+      }
     },
     "android": {
       "package": "ng.com.bawo.app",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "INTERNET"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -29,7 +43,19 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "bawo uses your location once to set your default country dialling code."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "bawo needs access to your photos so you can add a status or listing photo."
+        }
+      ]
     ],
     "extra": {
       "apiUrl": "http://localhost:4000",

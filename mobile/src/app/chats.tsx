@@ -1,304 +1,193 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Modal,
   Pressable,
-  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { ChatList } from '../components/ChatList';
+import { CommunityTab } from '../components/CommunityTab';
+import { ShopTab } from '../components/ShopTab';
+import { StatusTab } from '../components/StatusTab';
 import { api, ApiError } from '../lib/api';
-import { normalizeNational, toE164, detectCountry } from '../lib/phone';
+import { detectCountryWithoutPermission } from '../lib/location';
+import { COUNTRIES, digitsOnly, toE164, type Country } from '../lib/phone';
 import { useSession } from '../lib/session';
 import { colors, spacing } from '../lib/theme';
-import type { Conversation } from '../lib/types';
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((part) => part.charAt(0).toUpperCase()).join('') || '?';
-}
+type Tab = 'chats' | 'status' | 'community' | 'shop';
 
-function conversationTitle(conversation: Conversation, userId: string): string {
-  if (conversation.kind === 'group') return conversation.title ?? 'Group';
-  const peer = conversation.members.find((member) => member.id !== userId);
-  return peer?.displayName ?? 'Unknown';
-}
+const TABS: { key: Tab; label: string }[] = [
+  { key: 'chats', label: 'Chats' },
+  { key: 'status', label: 'Status' },
+  { key: 'community', label: 'Community' },
+  { key: 'shop', label: 'Shop' },
+];
 
-function preview(conversation: Conversation): string {
-  const message = conversation.lastMessage;
-  if (!message) return 'No messages yet';
-  return message.mediaUrl ? '📎 Attachment' : message.body;
-}
-
-export default function ChatsScreen() {
+export default function HomeScreen() {
   const router = useRouter();
   const { token, user, socket, signOut } = useSession();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [online, setOnline] = useState<Record<string, boolean>>({});
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [mode, setMode] = useState<'direct' | 'group'>('direct');
-  const [phoneInput, setPhoneInput] = useState('');
-  const [groupTitle, setGroupTitle] = useState('');
-  const [groupPhones, setGroupPhones] = useState('');
+  const [tab, setTab] = useState<Tab>('chats');
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [country, setCountry] = useState<Country>(() => detectCountryWithoutPermission().country);
+  const [national, setNational] = useState('');
+  const [saveToContacts, setSaveToContacts] = useState(true);
+  const [contactName, setContactName] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!token) return;
+  const e164 = useMemo(() => toE164(country, national), [country, national]);
+  const connected = socket?.connected === true;
+
+  const startChat = async () => {
+    if (!token || !e164) return;
+    setBusy(true);
+    setError(null);
     try {
-      const { conversations: list } = await api.conversations(token);
-      setConversations(list);
-      setError(null);
-
-      const memberIds = Array.from(
-        new Set(
-          list
-            .filter((conversation) => conversation.kind === 'direct')
-            .flatMap((conversation) => conversation.members.map((member) => member.id))
-            .filter((id) => id !== user?.id),
-        ),
-      );
-      if (memberIds.length > 0) {
-        const { presence } = await api.presence(token, memberIds);
-        setOnline((current) => {
-          const next = { ...current };
-          for (const entry of presence) next[entry.userId] = entry.online;
-          return next;
-        });
+      if (saveToContacts) {
+        await api.addContact(token, national, contactName.trim() || undefined, country.code);
       }
-    } catch {
-      setError('Could not load your chats.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [token, user?.id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
-
-  useEffect(() => {
-    if (!socket) return;
-    const onMessage = () => void load();
-    const onPresence = (payload: { userId: string; online: boolean }) =>
-      setOnline((current) => ({ ...current, [payload.userId]: payload.online }));
-
-    socket.on('message:new', onMessage);
-    socket.on('presence', onPresence);
-    return () => {
-      socket.off('message:new', onMessage);
-      socket.off('presence', onPresence);
-    };
-  }, [socket, load]);
-
-  const sorted = useMemo(
-    () =>
-      [...conversations].sort((a, b) => {
-        const left = a.lastMessage?.createdAt ?? a.createdAt;
-        const right = b.lastMessage?.createdAt ?? b.createdAt;
-        return right.localeCompare(left);
-      }),
-    [conversations],
-  );
-
-  const startDirect = async () => {
-    if (!token) return;
-    const country = detectCountry();
-    const normalized = phoneInput.trim().startsWith('+')
-      ? phoneInput.trim()
-      : toE164(country, normalizeNational(phoneInput));
-    if (!normalized) {
-      setFormError('Enter a valid phone number.');
-      return;
-    }
-    setBusy(true);
-    setFormError(null);
-    try {
-      const { conversationId } = await api.startDirect(token, { phone: normalized });
-      setMenuOpen(false);
-      setPhoneInput('');
-      await load();
+      const { conversationId } = await api.startDirect(token, { phone: national, userId: undefined });
+      setNewChatOpen(false);
+      setNational('');
+      setContactName('');
       router.push(`/chat/${conversationId}`);
-    } catch (requestError) {
-      setFormError(requestError instanceof ApiError ? requestError.code : 'Failed to start chat');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startGroup = async () => {
-    if (!token) return;
-    const country = detectCountry();
-    const phones = groupPhones
-      .split(/[\s,;]+/)
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0)
-      .map((value) => (value.startsWith('+') ? value : toE164(country, normalizeNational(value))))
-      .filter((value): value is string => value !== null);
-
-    if (groupTitle.trim().length === 0 || phones.length === 0) {
-      setFormError('Add a group name and at least one phone number.');
-      return;
-    }
-
-    setBusy(true);
-    setFormError(null);
-    try {
-      const members = await Promise.all(
-        phones.map(async (phone) => (await api.addContact(token, phone)).contact.id),
+    } catch (startError) {
+      setError(
+        startError instanceof ApiError && startError.code === 'invalid_peer'
+          ? 'That number belongs to you.'
+          : 'Could not start that chat.',
       );
-      const { conversationId } = await api.createGroup(token, groupTitle.trim(), members);
-      setMenuOpen(false);
-      setGroupTitle('');
-      setGroupPhones('');
-      await load();
-      router.push(`/chat/${conversationId}`);
-    } catch (requestError) {
-      setFormError(requestError instanceof ApiError ? requestError.code : 'Failed to create group');
     } finally {
       setBusy(false);
     }
   };
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.primary} size="large" />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.screen}>
-      <FlatList
-        data={sorted}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={sorted.length === 0 ? styles.emptyContainer : styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={colors.primary}
-            onRefresh={() => {
-              setRefreshing(true);
-              void load();
-            }}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.center}>
-            <Text style={styles.emptyTitle}>No chats yet</Text>
-            <Text style={styles.emptyText}>Start a conversation with the button below.</Text>
-          </View>
-        }
-        renderItem={({ item }) => {
-          const peer = item.kind === 'direct' ? item.members.find((m) => m.id !== user?.id) : undefined;
-          const isOnline = peer ? online[peer.id] === true : false;
-          return (
-            <Pressable style={styles.row} onPress={() => router.push(`/chat/${item.id}`)}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initials(conversationTitle(item, user?.id ?? ''))}</Text>
-                {item.kind === 'direct' && isOnline ? <View style={styles.onlineDot} /> : null}
-              </View>
-              <View style={styles.rowBody}>
-                <Text style={styles.rowTitle} numberOfLines={1}>
-                  {conversationTitle(item, user?.id ?? '')}
-                </Text>
-                <Text style={styles.rowPreview} numberOfLines={1}>
-                  {preview(item)}
-                </Text>
-              </View>
-              <View style={styles.rowMeta}>
-                {item.unreadCount > 0 ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{item.unreadCount}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </Pressable>
-          );
-        }}
-      />
+      <View style={styles.tabs}>
+        {TABS.map((entry) => (
+          <Pressable
+            key={entry.key}
+            style={[styles.tab, tab === entry.key && styles.tabActive]}
+            onPress={() => setTab(entry.key)}
+          >
+            <Text style={[styles.tabText, tab === entry.key && styles.tabTextActive]}>
+              {entry.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <View style={styles.actions}>
-        <Pressable style={styles.actionButton} onPress={() => { setMode('direct'); setMenuOpen(true); }}>
-          <Text style={styles.actionButtonText}>New chat</Text>
-        </Pressable>
-        <Pressable style={styles.actionButton} onPress={() => { setMode('group'); setMenuOpen(true); }}>
-          <Text style={styles.actionButtonText}>New group</Text>
-        </Pressable>
+      <View style={styles.body}>
+        {tab === 'chats' ? <ChatList /> : null}
+        {tab === 'status' ? <StatusTab /> : null}
+        {tab === 'community' ? <CommunityTab /> : null}
+        {tab === 'shop' ? <ShopTab /> : null}
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          {user?.displayName ?? ''} · {socket?.connected ? 'connected' : 'offline'}
-        </Text>
+        <Pressable style={styles.actionButton} onPress={() => setNewChatOpen(true)}>
+          <Text style={styles.actionButtonText}>New chat</Text>
+        </Pressable>
+        <Pressable style={styles.actionButton} onPress={() => router.push('/group-create')}>
+          <Text style={styles.actionButtonText}>New group</Text>
+        </Pressable>
+        <View style={styles.statusPill}>
+          <Text style={styles.statusText}>
+            {connected ? 'connected' : 'offline'} · {user?.displayName ?? ''}
+          </Text>
+        </View>
         <Pressable onPress={() => void signOut()}>
           <Text style={styles.signOut}>Sign out</Text>
         </Pressable>
       </View>
 
-      <Modal visible={menuOpen} animationType="slide" transparent onRequestClose={() => setMenuOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setMenuOpen(false)}>
+      <Modal visible={newChatOpen} animationType="slide" transparent onRequestClose={() => setNewChatOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setNewChatOpen(false)}>
           <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>{mode === 'direct' ? 'New chat' : 'New group'}</Text>
+            <Text style={styles.modalTitle}>New chat</Text>
 
-            {mode === 'direct' ? (
+            <View style={styles.phoneRow}>
+              <Pressable style={styles.countryButton} onPress={() => setPickerOpen(true)}>
+                <Text style={styles.countryText}>
+                  {country.flag} {country.dial}
+                </Text>
+              </Pressable>
               <TextInput
                 style={styles.input}
-                value={phoneInput}
-                onChangeText={setPhoneInput}
-                placeholder="+2348012345678"
+                value={national}
+                onChangeText={(value) => setNational(digitsOnly(value))}
+                placeholder={country.code === 'NG' ? '09016625779' : 'Phone number'}
                 placeholderTextColor={colors.textMuted}
                 keyboardType="phone-pad"
-                autoFocus
+                inputMode="tel"
+                maxLength={16}
               />
-            ) : (
-              <>
-                <TextInput
-                  style={styles.input}
-                  value={groupTitle}
-                  onChangeText={setGroupTitle}
-                  placeholder="Group name"
-                  placeholderTextColor={colors.textMuted}
-                />
-                <TextInput
-                  style={styles.input}
-                  value={groupPhones}
-                  onChangeText={setGroupPhones}
-                  placeholder="+2348012345678, +2348098765432"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="phone-pad"
-                />
-              </>
-            )}
+            </View>
+            <Text style={styles.helper}>
+              Type the number the way you normally dial it. We add {country.dial} in the background and keep
+              showing it as you entered it.
+            </Text>
 
-            {formError ? <Text style={styles.error}>{formError}</Text> : null}
+            <Pressable style={styles.checkboxRow} onPress={() => setSaveToContacts((value) => !value)}>
+              <View style={[styles.checkbox, saveToContacts && styles.checkboxOn]}>
+                {saveToContacts ? <Text style={styles.checkmark}>✓</Text> : null}
+              </View>
+              <Text style={styles.checkboxLabel}>Save to my contacts</Text>
+            </Pressable>
+
+            {saveToContacts ? (
+              <TextInput
+                style={styles.input}
+                value={contactName}
+                onChangeText={setContactName}
+                placeholder="Contact name (optional)"
+                placeholderTextColor={colors.textMuted}
+                maxLength={60}
+              />
+            ) : null}
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
 
             <Pressable
-              style={[styles.primaryButton, busy && styles.buttonDisabled]}
-              disabled={busy}
-              onPress={() => void (mode === 'direct' ? startDirect() : startGroup())}
+              style={[styles.primaryButton, (!e164 || busy) && styles.buttonDisabled]}
+              disabled={!e164 || busy}
+              onPress={() => void startChat()}
             >
               {busy ? (
                 <ActivityIndicator color="#04150F" />
               ) : (
-                <Text style={styles.primaryButtonText}>
-                  {mode === 'direct' ? 'Start chat' : 'Create group'}
-                </Text>
+                <Text style={styles.primaryButtonText}>Start chat</Text>
               )}
             </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={pickerOpen} animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)}>
+          <View style={[styles.modalSheet, styles.pickerSheet]}>
+            {COUNTRIES.map((entry) => (
+              <Pressable
+                key={entry.code}
+                style={styles.countryRow}
+                onPress={() => {
+                  setCountry(entry);
+                  setPickerOpen(false);
+                }}
+              >
+                <Text style={styles.countryRowText}>
+                  {entry.flag} {entry.name}
+                </Text>
+                <Text style={styles.countryRowDial}>{entry.dial}</Text>
+              </Pressable>
+            ))}
           </View>
         </Pressable>
       </Modal>
@@ -308,73 +197,38 @@ export default function ChatsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  listContent: { paddingVertical: spacing.sm },
-  emptyContainer: { flexGrow: 1 },
-  emptyTitle: { color: colors.text, fontSize: 18, fontWeight: '600' },
-  emptyText: { color: colors.textMuted, fontSize: 14 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    gap: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  onlineDot: {
-    position: 'absolute',
-    right: 0,
-    bottom: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.background,
-  },
-  rowBody: { flex: 1, gap: 2 },
-  rowTitle: { color: colors.text, fontSize: 16, fontWeight: '600' },
-  rowPreview: { color: colors.textMuted, fontSize: 13 },
-  rowMeta: { alignItems: 'flex-end' },
-  badge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  badgeText: { color: '#04150F', fontSize: 12, fontWeight: '700' },
-  actions: { flexDirection: 'row', gap: spacing.sm, padding: spacing.md },
-  actionButton: {
+  tabs: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.md },
+  tab: {
     flex: 1,
+    paddingVertical: spacing.sm,
+    borderRadius: 18,
     backgroundColor: colors.surfaceAlt,
-    borderRadius: 10,
-    paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  actionButtonText: { color: colors.primary, fontSize: 15, fontWeight: '600' },
+  tabActive: { backgroundColor: colors.primary },
+  tabText: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
+  tabTextActive: { color: '#04150F' },
+  body: { flex: 1, marginTop: spacing.sm },
   footer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  footerText: { color: colors.textMuted, fontSize: 12 },
-  signOut: { color: colors.danger, fontSize: 13, fontWeight: '600' },
-  error: { color: colors.danger, fontSize: 13, paddingHorizontal: spacing.lg },
+  actionButton: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  actionButtonText: { color: colors.primary, fontSize: 13, fontWeight: '600' },
+  statusPill: { marginLeft: 'auto' },
+  statusText: { color: colors.textMuted, fontSize: 11 },
+  signOut: { color: colors.danger, fontSize: 12, fontWeight: '600' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: colors.surface,
@@ -383,8 +237,20 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  pickerSheet: { maxHeight: '60%' },
   modalTitle: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  phoneRow: { flexDirection: 'row', gap: spacing.sm },
+  countryButton: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  countryText: { color: colors.text, fontSize: 16 },
   input: {
+    flex: 1,
     backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     paddingHorizontal: spacing.md,
@@ -394,6 +260,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  helper: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  checkboxRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkmark: { color: '#04150F', fontSize: 14, fontWeight: '700' },
+  checkboxLabel: { color: colors.text, fontSize: 14 },
+  error: { color: colors.danger, fontSize: 13 },
   primaryButton: {
     backgroundColor: colors.primary,
     borderRadius: 10,
@@ -402,4 +283,12 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.5 },
   primaryButtonText: { color: '#04150F', fontSize: 16, fontWeight: '700' },
+  countryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  countryRowText: { color: colors.text, fontSize: 16 },
+  countryRowDial: { color: colors.textMuted, fontSize: 15 },
 });

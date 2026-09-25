@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,21 +13,27 @@ import {
   View,
 } from 'react-native';
 import { api, ApiError } from '../lib/api';
-import { COUNTRIES, detectCountry, isValidE164, normalizeNational, toE164, type Country } from '../lib/phone';
+import { detectCountry, detectCountryWithoutPermission, type DetectionSource } from '../lib/location';
+import { COUNTRIES, digitsOnly, formatWithDial, toE164, type Country } from '../lib/phone';
 import { useSession } from '../lib/session';
 import { colors, spacing } from '../lib/theme';
 
 type Step = 'phone' | 'code';
 
+const SOURCE_LABEL: Record<DetectionSource, string> = {
+  gps: 'detected from your location',
+  timezone: 'detected from your timezone',
+  locale: 'detected from your language',
+  default: 'pick your country',
+};
+
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.code) {
       case 'invalid_phone':
-        return 'That phone number does not look right.';
+        return 'That number does not look right. Check the digits and country.';
       case 'invalid_code':
         return 'Wrong or expired code. Try again.';
-      case 'not_found':
-        return 'Could not reach the bawo server.';
       default:
         return `Request failed (${error.code}).`;
     }
@@ -39,7 +45,8 @@ export default function LoginScreen() {
   const router = useRouter();
   const { signIn } = useSession();
 
-  const [country, setCountry] = useState<Country>(() => detectCountry());
+  const [country, setCountry] = useState<Country>(() => detectCountryWithoutPermission().country);
+  const [source, setSource] = useState<DetectionSource>(() => detectCountryWithoutPermission().source);
   const [national, setNational] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [code, setCode] = useState('');
@@ -47,18 +54,35 @@ export default function LoginScreen() {
   const [devCode, setDevCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const e164 = useMemo(() => toE164(country, national), [country, national]);
+  useEffect(() => {
+    let cancelled = false;
+    void detectCountry(true)
+      .then((detected) => {
+        if (cancelled) return;
+        setCountry(detected.country);
+        setSource(detected.source);
+      })
+      .finally(() => {
+        if (!cancelled) setLocating(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const e164 = toE164(country, national);
   const canRequest = e164 !== null && !busy;
   const canVerify = code.length >= 4 && !busy;
 
-  const requestOtp = async () => {
+  const requestOtp = useCallback(async () => {
     if (!e164) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await api.requestOtp(e164);
+      const result = await api.requestOtp(national, country.code);
       setDevCode(result.devCode ?? null);
       setCode(result.devCode ?? '');
       setStep('code');
@@ -67,14 +91,14 @@ export default function LoginScreen() {
     } finally {
       setBusy(false);
     }
-  };
+  }, [e164, national, country.code]);
 
-  const verify = async () => {
-    if (!e164 || !isValidE164(e164)) return;
+  const verify = useCallback(async () => {
+    if (!e164) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await api.verifyOtp(e164, code, displayName.trim() || undefined);
+      const result = await api.verifyOtp(national, code, displayName.trim() || undefined, country.code);
       await signIn({ token: result.token, user: result.user });
       router.replace('/chats');
     } catch (verifyError) {
@@ -82,42 +106,55 @@ export default function LoginScreen() {
     } finally {
       setBusy(false);
     }
-  };
+  }, [e164, national, code, displayName, country.code, signIn, router]);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.hero}>
           <Text style={styles.logo}>bawo</Text>
           <Text style={styles.tagline}>
             {step === 'phone'
-              ? 'Enter your phone number to keep the conversation going.'
-              : `We sent a code to ${e164 ?? ''}`}
+              ? 'Enter your phone number. We detect your country, so you can type it the way you normally do.'
+              : `We sent a code to ${e164 ? formatWithDial(e164, digitsOnly(national)) : digitsOnly(national)}`}
           </Text>
         </View>
 
         {step === 'phone' ? (
           <View style={styles.form}>
-            <Text style={styles.label}>Phone number</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>Phone number</Text>
+              {locating ? (
+                <Text style={styles.detectHint}>locating…</Text>
+              ) : (
+                <Text style={styles.detectHint}>{SOURCE_LABEL[source]}</Text>
+              )}
+            </View>
+
             <View style={styles.phoneRow}>
               <Pressable style={styles.countryButton} onPress={() => setPickerOpen(true)}>
-                <Text style={styles.countryText}>{country.flag} {country.dial}</Text>
+                <Text style={styles.countryText}>
+                  {country.flag} {country.dial}
+                </Text>
               </Pressable>
               <TextInput
                 style={styles.input}
                 value={national}
-                onChangeText={(value) => setNational(normalizeNational(value))}
-                placeholder="8012345678"
+                onChangeText={(value) => setNational(digitsOnly(value))}
+                placeholder={country.code === 'NG' ? '09016625779' : 'Phone number'}
                 placeholderTextColor={colors.textMuted}
-                keyboardType="number-pad"
-                inputMode="numeric"
-                maxLength={14}
+                keyboardType="phone-pad"
+                inputMode="tel"
+                maxLength={16}
                 autoComplete="tel"
               />
             </View>
+
+            <Text style={styles.helper}>
+              {country.code === 'NG'
+                ? 'Type it like 09016625779 — we add +234 for you. You will keep seeing it as you typed it.'
+                : 'Leading zeros and spaces are fine. We store the full international form.'}
+            </Text>
 
             <Text style={styles.label}>Your name</Text>
             <TextInput
@@ -131,7 +168,7 @@ export default function LoginScreen() {
 
             <Pressable
               style={[styles.primaryButton, !canRequest && styles.buttonDisabled]}
-              onPress={requestOtp}
+              onPress={() => void requestOtp()}
               disabled={!canRequest}
             >
               {busy ? <ActivityIndicator color="#04150F" /> : <Text style={styles.primaryButtonText}>Send code</Text>}
@@ -143,7 +180,7 @@ export default function LoginScreen() {
             <TextInput
               style={[styles.input, styles.codeInput]}
               value={code}
-              onChangeText={(value) => setCode(value.replace(/\D/g, ''))}
+              onChangeText={(value) => setCode(digitsOnly(value))}
               placeholder="123456"
               placeholderTextColor={colors.textMuted}
               keyboardType="number-pad"
@@ -156,10 +193,14 @@ export default function LoginScreen() {
 
             <Pressable
               style={[styles.primaryButton, !canVerify && styles.buttonDisabled]}
-              onPress={verify}
+              onPress={() => void verify()}
               disabled={!canVerify}
             >
-              {busy ? <ActivityIndicator color="#04150F" /> : <Text style={styles.primaryButtonText}>Verify and continue</Text>}
+              {busy ? (
+                <ActivityIndicator color="#04150F" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Verify and continue</Text>
+              )}
             </Pressable>
 
             <Pressable
@@ -188,10 +229,13 @@ export default function LoginScreen() {
                   style={styles.countryRow}
                   onPress={() => {
                     setCountry(entry);
+                    setSource('default');
                     setPickerOpen(false);
                   }}
                 >
-                  <Text style={styles.countryRowText}>{entry.flag} {entry.name}</Text>
+                  <Text style={styles.countryRowText}>
+                    {entry.flag} {entry.name}
+                  </Text>
                   <Text style={styles.countryRowDial}>{entry.dial}</Text>
                 </Pressable>
               ))}
@@ -204,43 +248,17 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: spacing.xl,
-    gap: spacing.xl,
-  },
-  hero: {
-    gap: spacing.sm,
-  },
-  logo: {
-    color: colors.primary,
-    fontSize: 44,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  tagline: {
-    color: colors.textMuted,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  form: {
-    gap: spacing.md,
-  },
-  label: {
-    color: colors.textMuted,
-    fontSize: 13,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  phoneRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
+  screen: { flex: 1, backgroundColor: colors.background },
+  content: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.xl },
+  hero: { gap: spacing.sm },
+  logo: { color: colors.primary, fontSize: 44, fontWeight: '700', letterSpacing: 1 },
+  tagline: { color: colors.textMuted, fontSize: 15, lineHeight: 21 },
+  form: { gap: spacing.md },
+  labelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  label: { color: colors.textMuted, fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.6 },
+  detectHint: { color: colors.primary, fontSize: 11 },
+  helper: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  phoneRow: { flexDirection: 'row', gap: spacing.sm },
   countryButton: {
     backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
@@ -249,10 +267,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  countryText: {
-    color: colors.text,
-    fontSize: 16,
-  },
+  countryText: { color: colors.text, fontSize: 16 },
   input: {
     flex: 1,
     backgroundColor: colors.surfaceAlt,
@@ -264,15 +279,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  codeInput: {
-    letterSpacing: 6,
-    textAlign: 'center',
-    fontSize: 22,
-  },
-  hint: {
-    color: colors.primary,
-    fontSize: 13,
-  },
+  codeInput: { letterSpacing: 6, textAlign: 'center', fontSize: 22 },
+  hint: { color: colors.primary, fontSize: 13 },
   primaryButton: {
     backgroundColor: colors.primary,
     borderRadius: 10,
@@ -280,31 +288,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.sm,
   },
-  buttonDisabled: {
-    opacity: 0.4,
-  },
-  primaryButtonText: {
-    color: '#04150F',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
-  secondaryButtonText: {
-    color: colors.textMuted,
-    fontSize: 14,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: 14,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
+  buttonDisabled: { opacity: 0.4 },
+  primaryButtonText: { color: '#04150F', fontSize: 16, fontWeight: '700' },
+  secondaryButton: { alignItems: 'center', paddingVertical: spacing.md },
+  secondaryButtonText: { color: colors.textMuted, fontSize: 14 },
+  error: { color: colors.danger, fontSize: 14 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: colors.surface,
     borderTopLeftRadius: 16,
@@ -319,12 +308,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  countryRowText: {
-    color: colors.text,
-    fontSize: 16,
-  },
-  countryRowDial: {
-    color: colors.textMuted,
-    fontSize: 15,
-  },
+  countryRowText: { color: colors.text, fontSize: 16 },
+  countryRowDial: { color: colors.textMuted, fontSize: 15 },
 });

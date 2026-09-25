@@ -292,6 +292,8 @@ export async function listConversations(userId: string): Promise<Conversation[]>
                 'id', u.id,
                 'displayName', u.display_name,
                 'phone', u.phone,
+                'nationalPhone', u.national_phone,
+                'countryCode', u.country_code,
                 'avatarUrl', u.avatar_url
               ) ORDER BY u.display_name) AS list
        FROM conversation_members cm2

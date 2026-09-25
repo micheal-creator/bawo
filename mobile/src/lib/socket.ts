@@ -1,5 +1,22 @@
 import { io, type Socket } from 'socket.io-client';
-import type { Message } from './types';
+import type { CallKind, CallPeer, CallRecord, Message } from './types';
+
+export interface CallInvite {
+  call: CallRecord;
+  peer: CallPeer;
+}
+
+export interface CallEnded {
+  callId: string;
+  status: CallRecord['status'];
+  durationSeconds: number;
+}
+
+export interface CallSignal {
+  callId: string;
+  from: string;
+  payload: unknown;
+}
 
 export interface ServerToClientEvents {
   'message:new': (payload: Message) => void;
@@ -8,6 +25,11 @@ export interface ServerToClientEvents {
   presence: (payload: { userId: string; online: boolean; lastSeen: string | null }) => void;
   typing: (payload: { conversationId: string; userId: string; typing: boolean }) => void;
   error: (payload: { error: string }) => void;
+  'call:incoming': (payload: CallInvite) => void;
+  'call:accepted': (payload: CallInvite) => void;
+  'call:declined': (payload: { callId: string }) => void;
+  'call:ended': (payload: CallEnded) => void;
+  'call:signal': (payload: CallSignal) => void;
 }
 
 export interface ClientToServerEvents {
@@ -21,6 +43,16 @@ export interface ClientToServerEvents {
   'message:read': (input: { conversationId: string; upTo?: string }) => void;
   typing: (input: { conversationId: string; typing: boolean }) => void;
   'device:register': (input: { token: string; platform: 'ios' | 'android' | 'web' }) => void;
+  'call:start': (
+    input: { calleeId: string; kind: CallKind },
+    ack?: (
+      result: { ok: true; call: CallRecord } | { ok: false; error: string; call?: CallRecord },
+    ) => void,
+  ) => void;
+  'call:accept': (input: { callId: string }) => void;
+  'call:decline': (input: { callId: string }) => void;
+  'call:end': (input: { callId: string }) => void;
+  'call:signal': (input: { callId: string; payload: unknown }) => void;
 }
 
 export type BawoSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

@@ -123,7 +123,12 @@ export async function upsertUserByNational(
 }
 
 export async function upsertUserFromInput(input: PhoneInput, displayName?: string): Promise<User> {
-  return upsertUserByPhone(input.e164, displayName, input.nationalPhone, input.countryCode);
+  return upsertUserByPhone(
+    input.e164,
+    displayName,
+    input.explicitLocal ? input.nationalPhone : null,
+    input.explicitLocal ? input.countryCode : null,
+  );
 }
 
 export async function getUserById(id: string): Promise<User | null> {

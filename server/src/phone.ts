@@ -84,6 +84,7 @@ export interface PhoneInput {
   e164: string;
   nationalPhone: string;
   countryCode: string;
+  explicitLocal: boolean;
 }
 
 export function resolvePhoneInput(
@@ -100,6 +101,7 @@ export function resolvePhoneInput(
       e164: `+${parsed.dial.slice(1)}${parsed.national}`,
       nationalPhone: parsed.national,
       countryCode: parsed.country?.code ?? fallbackCountry?.code ?? 'NG',
+      explicitLocal: false,
     };
   }
 
@@ -107,7 +109,7 @@ export function resolvePhoneInput(
   const e164 = resolveE164(country, trimmed);
   if (!e164) return null;
   const nationalPhone = digitsOnly(trimmed);
-  return { e164, nationalPhone, countryCode: country.code };
+  return { e164, nationalPhone, countryCode: country.code, explicitLocal: true };
 }
 
 export function formatDisplay(phone: string, nationalPhone?: string | null): string {

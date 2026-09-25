@@ -197,14 +197,18 @@ router.post('/contacts', asyncHandler(async (req, res) => {
     return;
   }
   await addContact(ownerId, contact.id, {
-    nationalPhone: resolved.nationalPhone,
-    countryCode: resolved.countryCode,
+    nationalPhone: resolved.explicitLocal ? resolved.nationalPhone : null,
+    countryCode: resolved.explicitLocal ? resolved.countryCode : null,
   });
   res.status(201).json({
     contact: {
       ...contact,
-      nationalPhone: resolved.nationalPhone,
-      countryCode: resolved.countryCode,
+      nationalPhone: resolved.explicitLocal
+        ? resolved.nationalPhone
+        : (contact.nationalPhone ?? resolved.nationalPhone),
+      countryCode: resolved.explicitLocal
+        ? resolved.countryCode
+        : (contact.countryCode ?? resolved.countryCode),
     },
   });
 }));
@@ -225,8 +229,8 @@ router.post('/contacts/sync', asyncHandler(async (req, res) => {
   for (const user of users) {
     const local = byPhone.get(user.phone);
     await addContact(ownerId, user.id, {
-      nationalPhone: local?.nationalPhone ?? null,
-      countryCode: local?.countryCode ?? null,
+      nationalPhone: local?.explicitLocal ? local.nationalPhone : null,
+      countryCode: local?.explicitLocal ? local.countryCode : null,
     });
   }
   res.json({ matched: users });

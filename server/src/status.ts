@@ -121,7 +121,7 @@ export async function listStatusFeed(viewerId: string): Promise<StatusGroup[]> {
                   'mediaUrl', s.media_url,
                   'createdAt', s.created_at,
                   'expiresAt', s.expires_at,
-                  'viewed', (v.viewer_id IS NOT NULL),
+                  'viewed', (v.viewer_id IS NOT NULL OR s.user_id = $1::uuid),
                   'viewCount', (SELECT count(*) FROM status_views sv WHERE sv.status_id = s.id)
                 ) ORDER BY s.created_at ASC
               ) AS items,
@@ -138,6 +138,7 @@ export async function listStatusFeed(viewerId: string): Promise<StatusGroup[]> {
        FROM user_status s2
        WHERE s2.user_id = feed.user_id
          AND s2.expires_at > now()
+         AND s2.user_id <> $1::uuid
          AND NOT EXISTS (
            SELECT 1 FROM status_views v2
            WHERE v2.status_id = s2.id AND v2.viewer_id = $1::uuid

@@ -2,7 +2,7 @@
   "expo": {
     "name": "bawo",
     "slug": "bawo",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "bawo",
@@ -29,7 +29,7 @@
         "INTERNET"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#592CFB",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

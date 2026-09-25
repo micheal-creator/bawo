@@ -6,7 +6,7 @@ Three things get deployed:
 | --- | --- | --- |
 | API + Socket.IO server + Postgres | Render (Frankfurt) | `https://bawo-api.onrender.com` |
 | Client for testers (web, no install) | Vercel | `https://bawo-ivory.vercel.app` |
-| Android app for testers (APK, v0.2.0) | EAS Build | https://expo.dev/artifacts/eas/0JprPmdaRUyD9UFFtN54yxMsKZnWHDqOqW7rCKZLmK8.apk |
+| Android app for testers (APK, v0.2.1) | EAS Build | https://expo.dev/artifacts/eas/0es7-6SW9aBJovrzTjdZl_XcLk2N3-tSNhfuDUOjIEg.apk |
 
 `OTP_MODE=dev` is on, so testers sign in with any phone number and code `123456`.
 

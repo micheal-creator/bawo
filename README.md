@@ -121,6 +121,18 @@ Signalling rides the existing Socket.IO connection; media is peer-to-peer WebRTC
 
 A plain-language handout for anyone trying the app is in [TESTERS.md](TESTERS.md). The live endpoints are documented in [DEPLOY.md](DEPLOY.md).
 
+## Icons
+
+The app icon, Android adaptive layers, and web favicon are generated from the bawo kola nut artwork (indigo `#592CFB` tile):
+
+- `mobile/assets/icon.png` — 1024x1024, fully opaque, for iOS and legacy Android.
+- `mobile/assets/android-icon-foreground.png` — 512x512 tile with transparent corners.
+- `mobile/assets/android-icon-background.png` — 512x512 solid `#592CFB`.
+- `mobile/assets/android-icon-monochrome.png` — 432x432 white nut silhouette for Android 13 themed icons.
+- `mobile/assets/favicon.png` — 48x48, expanded by Expo into 16/32/48px `favicon.ico`.
+
+To regenerate after replacing the source art, scale the artwork to fill 1024x1024 and composite it over `#592CFB`, then derive the other sizes from the same crop.
+
 ## Deploying
 
 See [DEPLOY.md](DEPLOY.md) for the Render (backend, Frankfurt), Vercel (web client for testers), and EAS (Android APK) steps.

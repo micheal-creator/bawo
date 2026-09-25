@@ -16,9 +16,9 @@ Open in any browser:
 
 ## Android (native app)
 
-Install this APK (v0.2.0), then allow **Install from unknown sources**:
+Install this APK (v0.2.1), then allow **Install from unknown sources**:
 
-**https://expo.dev/artifacts/eas/0JprPmdaRUyD9UFFtN54yxMsKZnWHDqOqW7rCKZLmK8.apk**
+**https://expo.dev/artifacts/eas/0es7-6SW9aBJovrzTjdZl_XcLk2N3-tSNhfuDUOjIEg.apk**
 
 Then follow the same sign-in steps. Calls work on the Android app and in the browser.
 

@@ -14,6 +14,42 @@ import {
   conversationIdsForMessages,
 } from './store.js';
 import { isOnline, lastSeen, markOffline, markOnline } from './redis.js';
+import {
+  activeCallForUser,
+  createCall,
+  endCall,
+  getCall,
+  markCallConnected,
+  type CallKind,
+  type CallRecord,
+} from './calls.js';
+import { getUserById } from './store.js';
+
+interface CallPeer {
+  id: string;
+  displayName: string;
+  phone: string;
+  nationalPhone: string | null;
+  countryCode: string | null;
+  avatarUrl: string | null;
+}
+
+interface CallInvite {
+  call: CallRecord;
+  peer: CallPeer;
+}
+
+interface CallSignal {
+  callId: string;
+  from: string;
+  payload: unknown;
+}
+
+interface CallEnded {
+  callId: string;
+  status: CallRecord['status'];
+  durationSeconds: number;
+}
 
 interface MessagePayload {
   id: string;
@@ -55,6 +91,12 @@ interface ServerToClientEvents {
   presence: (payload: PresencePayload) => void;
   typing: (payload: { conversationId: string; userId: string; typing: boolean }) => void;
   error: (payload: { error: string }) => void;
+  'call:incoming': (payload: CallInvite) => void;
+  'call:accepted': (payload: CallInvite) => void;
+  'call:declined': (payload: { callId: string }) => void;
+  'call:ended': (payload: CallEnded) => void;
+  'call:signal': (payload: CallSignal) => void;
+  'call:cancelled': (payload: { callId: string }) => void;
 }
 
 interface ClientToServerEvents {
@@ -68,6 +110,16 @@ interface ClientToServerEvents {
   'message:read': (input: ReadInput) => void;
   typing: (input: TypingInput) => void;
   'device:register': (input: { token: string; platform: 'ios' | 'android' | 'web' }) => void;
+  'call:start': (
+    input: { calleeId: string; kind: CallKind },
+    ack?: (
+      result: { ok: true; call: CallRecord } | { ok: false; error: string; call?: CallRecord },
+    ) => void,
+  ) => void;
+  'call:accept': (input: { callId: string }) => void;
+  'call:decline': (input: { callId: string }) => void;
+  'call:end': (input: { callId: string }) => void;
+  'call:signal': (input: { callId: string; payload: unknown }) => void;
 }
 
 interface SocketData {
@@ -221,7 +273,121 @@ async function onConnection(io: Server, socket: AppSocket): Promise<void> {
     await saveDeviceToken(userId, token, platform);
   });
 
+  socket.on('call:start', async (input, ack) => {
+    try {
+      const calleeId = typeof input?.calleeId === 'string' ? input.calleeId : '';
+      const kind: CallKind = input?.kind === 'video' ? 'video' : 'audio';
+      if (calleeId.length === 0 || calleeId === userId) {
+        ack?.({ ok: false, error: 'invalid_callee' });
+        return;
+      }
+
+      const callee = await getUserById(calleeId);
+      if (!callee) {
+        ack?.({ ok: false, error: 'callee_not_found' });
+        return;
+      }
+
+      const mine = await activeCallForUser(userId);
+      if (mine) {
+        ack?.({ ok: false, error: 'already_in_call', call: mine });
+        return;
+      }
+
+      const theirs = await activeCallForUser(calleeId);
+      if (theirs) {
+        ack?.({ ok: false, error: 'user_busy' });
+        return;
+      }
+
+      const call = await createCall(userId, calleeId, kind);
+      const caller = await getUserById(userId);
+      ack?.({ ok: true, call });
+
+      io.to(userRoom(calleeId)).emit('call:incoming', {
+        call,
+        peer: {
+          id: userId,
+          displayName: caller?.displayName ?? 'Unknown',
+          phone: caller?.phone ?? '',
+          nationalPhone: caller?.nationalPhone ?? null,
+          countryCode: caller?.countryCode ?? null,
+          avatarUrl: caller?.avatarUrl ?? null,
+        },
+      });
+    } catch (error) {
+      console.error('[socket] call:start failed', error);
+      ack?.({ ok: false, error: 'server_error' });
+    }
+  });
+
+  socket.on('call:accept', async ({ callId }) => {
+    if (typeof callId !== 'string') return;
+    const call = await getCall(callId);
+    if (!call || call.calleeId !== userId || call.status !== 'ringing') return;
+    const updated = await markCallConnected(callId);
+    if (!updated) return;
+    const callee = await getUserById(userId);
+    io.to(userRoom(call.callerId)).emit('call:accepted', {
+      call: updated,
+      peer: {
+        id: userId,
+        displayName: callee?.displayName ?? 'Unknown',
+        phone: callee?.phone ?? '',
+        nationalPhone: callee?.nationalPhone ?? null,
+        countryCode: callee?.countryCode ?? null,
+        avatarUrl: callee?.avatarUrl ?? null,
+      },
+    });
+  });
+
+  socket.on('call:decline', async ({ callId }) => {
+    if (typeof callId !== 'string') return;
+    const call = await getCall(callId);
+    if (!call || call.calleeId !== userId) return;
+    const updated = await endCall(callId, 'declined');
+    if (!updated) return;
+    io.to(userRoom(call.callerId)).emit('call:declined', { callId });
+  });
+
+  socket.on('call:end', async ({ callId }) => {
+    if (typeof callId !== 'string') return;
+    const call = await getCall(callId);
+    if (!call || (call.callerId !== userId && call.calleeId !== userId)) return;
+    const updated = await endCall(callId, 'ended');
+    if (!updated) return;
+    const otherId = call.callerId === userId ? call.calleeId : call.callerId;
+    io.to(userRoom(otherId)).emit('call:ended', {
+      callId,
+      status: updated.status,
+      durationSeconds: updated.durationSeconds,
+    });
+  });
+
+  socket.on('call:signal', ({ callId, payload }) => {
+    if (typeof callId !== 'string' || payload === undefined || payload === null) return;
+    void (async () => {
+      const call = await getCall(callId);
+      if (!call) return;
+      if (call.callerId !== userId && call.calleeId !== userId) return;
+      if (call.status !== 'ringing' && call.status !== 'connected') return;
+      const otherId = call.callerId === userId ? call.calleeId : call.callerId;
+      io.to(userRoom(otherId)).emit('call:signal', { callId, from: userId, payload });
+    })().catch((error: unknown) => console.error('[socket] call:signal failed', error));
+  });
+
   socket.on('disconnect', async () => {
+    const call = await activeCallForUser(userId);
+    if (call) {
+      const updated = await endCall(call.id, call.status === 'ringing' ? 'missed' : 'ended');
+      const otherId = call.callerId === userId ? call.calleeId : call.callerId;
+      io.to(userRoom(otherId)).emit('call:ended', {
+        callId: call.id,
+        status: updated?.status ?? 'ended',
+        durationSeconds: updated?.durationSeconds ?? 0,
+      });
+    }
+
     const remaining = await markOffline(userId);
     if (remaining > 0) return;
     const seen = await lastSeen(userId);

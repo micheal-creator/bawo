@@ -42,6 +42,23 @@ export const config = {
     ttlSeconds: int('OTP_CODE_TTL_SECONDS', 300),
     devCode: process.env.OTP_DEV_CODE ?? '123456',
   },
+
+  media: {
+    dir: process.env.UPLOAD_DIR ?? 'uploads',
+    maxBytes: int('UPLOAD_MAX_BYTES', 5 * 1024 * 1024),
+  },
+
+  ice: {
+    stunUrls: (process.env.STUN_URLS ?? 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0),
+    turnUrl: process.env.TURN_URL?.trim() || null,
+    turnUsername: process.env.TURN_USERNAME?.trim() || null,
+    turnCredential: process.env.TURN_CREDENTIAL?.trim() || null,
+  },
+
+  statusTtlHours: int('STATUS_TTL_HOURS', 24),
 } as const;
 
 export const isDevOtp = config.otp.mode === 'dev';

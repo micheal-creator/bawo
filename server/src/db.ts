@@ -33,7 +33,19 @@ export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<
 }
 
 export async function migrate(): Promise<void> {
-  await pool.query(SCHEMA_SQL);
+  const statements = SCHEMA_SQL.split(';')
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+
+  for (const statement of statements) {
+    try {
+      await pool.query(statement);
+    } catch (error) {
+      const preview = statement.split('\n').slice(0, 3).join(' ').slice(0, 160);
+      console.error(`[db] migration failed on: ${preview}`);
+      throw error;
+    }
+  }
 }
 
 export async function closePool(): Promise<void> {

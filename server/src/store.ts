@@ -1,8 +1,11 @@
 import { query } from './db.js';
+import { digitsOnly, resolveE164, type Country, type PhoneInput } from './phone.js';
 
 export interface User {
   id: string;
   phone: string;
+  nationalPhone: string | null;
+  countryCode: string | null;
   displayName: string;
   about: string;
   avatarUrl: string | null;
@@ -40,6 +43,8 @@ export interface Message {
 interface UserRow {
   id: string;
   phone: string;
+  national_phone: string | null;
+  country_code: string | null;
   display_name: string;
   about: string;
   avatar_url: string | null;
@@ -60,6 +65,8 @@ function toUser(row: UserRow): User {
   return {
     id: row.id,
     phone: row.phone,
+    nationalPhone: row.national_phone,
+    countryCode: row.country_code,
     displayName: row.display_name,
     about: row.about,
     avatarUrl: row.avatar_url,
@@ -79,23 +86,44 @@ function toMessage(row: MessageRow): Message {
   };
 }
 
-export async function upsertUserByPhone(phone: string, displayName?: string): Promise<User> {
+export async function upsertUserByPhone(
+  phone: string,
+  displayName?: string,
+  nationalPhone?: string | null,
+  countryCode?: string | null,
+): Promise<User> {
   const result = await query<UserRow>(
-    `INSERT INTO users (phone, display_name)
-     VALUES ($1, $2)
+    `INSERT INTO users (phone, display_name, national_phone, country_code)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (phone) DO UPDATE
        SET last_seen_at = now(),
+           national_phone = COALESCE($3, users.national_phone),
+           country_code = COALESCE($4, users.country_code),
            display_name = CASE
              WHEN users.display_name = '' OR users.display_name = users.phone
                THEN COALESCE(NULLIF($2, ''), users.display_name)
              ELSE users.display_name
            END
      RETURNING *`,
-    [phone, displayName ?? phone],
+    [phone, displayName ?? phone, nationalPhone ?? null, countryCode ?? null],
   );
   const row = result.rows[0];
   if (!row) throw new Error('user_upsert_failed');
   return toUser(row);
+}
+
+export async function upsertUserByNational(
+  nationalPhone: string,
+  country: Country,
+  displayName?: string,
+): Promise<User> {
+  const e164 = resolveE164(country, nationalPhone);
+  if (!e164) throw new Error('invalid_phone');
+  return upsertUserByPhone(e164, displayName, digitsOnly(nationalPhone), country.code);
+}
+
+export async function upsertUserFromInput(input: PhoneInput, displayName?: string): Promise<User> {
+  return upsertUserByPhone(input.e164, displayName, input.nationalPhone, input.countryCode);
 }
 
 export async function getUserById(id: string): Promise<User | null> {
@@ -129,7 +157,16 @@ export async function updateProfile(
 
 export async function listContacts(ownerId: string): Promise<User[]> {
   const result = await query<UserRow>(
-    `SELECT u.* FROM contacts c
+    `SELECT u.id,
+            u.phone,
+            COALESCE(c.national_phone, u.national_phone) AS national_phone,
+            COALESCE(c.country_code, u.country_code) AS country_code,
+            u.display_name,
+            u.about,
+            u.avatar_url,
+            u.created_at,
+            u.last_seen_at
+     FROM contacts c
      JOIN users u ON u.id = c.contact_id
      WHERE c.owner_id = $1
      ORDER BY u.display_name ASC`,
@@ -138,12 +175,19 @@ export async function listContacts(ownerId: string): Promise<User[]> {
   return result.rows.map(toUser);
 }
 
-export async function addContact(ownerId: string, contactId: string): Promise<void> {
+export async function addContact(
+  ownerId: string,
+  contactId: string,
+  local?: { nationalPhone?: string | null; countryCode?: string | null },
+): Promise<void> {
   if (ownerId === contactId) return;
   await query(
-    `INSERT INTO contacts (owner_id, contact_id) VALUES ($1, $2)
-     ON CONFLICT DO NOTHING`,
-    [ownerId, contactId],
+    `INSERT INTO contacts (owner_id, contact_id, national_phone, country_code)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (owner_id, contact_id) DO UPDATE
+       SET national_phone = COALESCE(EXCLUDED.national_phone, contacts.national_phone),
+           country_code = COALESCE(EXCLUDED.country_code, contacts.country_code)`,
+    [ownerId, contactId, local?.nationalPhone ?? null, local?.countryCode ?? null],
   );
 }
 
